@@ -70,6 +70,23 @@ class HReLU(nn.Module):
         return f'num_parameters={self.num_parameters}'
 
 
+class SwiGLU(nn.Module):
+    """
+    SwiGLU Activation.
+    Formula: y = (xW + b) * SiLU(xV + c)
+    In this modular implementation, we assume the input x already contains
+    both parts (gated and gating) concatenated along the channel dimension.
+    """
+    def __init__(self, dim=-1):
+        super().__init__()
+        self.dim = dim
+
+    def forward(self, x):
+        # Split the input into two halves along the specified dimension
+        x, gate = x.chunk(2, dim=self.dim)
+        return x * F.silu(gate)
+
+
 class BilinearPReLUFunction(torch.autograd.Function):
     """
     Optional: Custom autograd function for even more control over gradients.

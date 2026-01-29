@@ -1,0 +1,7 @@
+=== 20-LAYER DEEP EXPERIMENT SUMMARY ===
+HRELU (No BN)       : Status=success   , Final Acc=94.39%
+HRELU + BN          : Status=success   , Final Acc=93.99%
+RELU (No BN)        : Status=success   , Final Acc=94.89%
+RELU + BN           : Status=success   , Final Acc=94.81%
+SWIGLU (No BN)      : Status=exploded  , Final Acc=EXPLODED
+SWIGLU + BN         : Status=exploded  , Final Acc=EXPLODED
