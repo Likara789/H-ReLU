@@ -1,0 +1,43 @@
+========================================================================================================================
+COMPREHENSIVE BENCHMARK SUMMARY
+========================================================================================================================
+
+Dataset    Activation BN    Opt   Test Acc     Train Acc    Time       Status    
+------------------------------------------------------------------------------------------------------------------------
+mnist      RELU       No    No    99.18%       99.72%       75.7s      success   
+mnist      RELU       Yes   No    99.31%       99.96%       76.5s      success   
+mnist      SWIGLU     No    No    98.94%       99.82%       80.8s      success   
+mnist      SWIGLU     Yes   No    99.23%       99.85%       83.1s      success   
+mnist      HRELU      No    No    98.87%       99.80%       78.9s      success   
+mnist      HRELU      Yes   No    99.10%       99.88%       79.7s      success   
+mnist      HRELU      No    Yes   98.99%       99.74%       78.5s      success   
+mnist      HRELU      Yes   Yes   99.32%       99.88%       82.0s      success   
+
+cifar10    RELU       No    No    81.71%       82.88%       142.6s     success   
+cifar10    RELU       Yes   No    85.12%       86.58%       152.3s     success   
+cifar10    SWIGLU     No    No    10.00%       9.80%        179.6s     success   
+cifar10    SWIGLU     Yes   No    81.17%       81.40%       230.1s     success   
+cifar10    HRELU      No    No    83.96%       86.67%       306.5s     success   
+cifar10    HRELU      Yes   No    85.56%       89.44%       315.5s     success   
+cifar10    HRELU      No    Yes   83.82%       85.96%       306.1s     success   
+cifar10    HRELU      Yes   Yes   86.08%       89.92%       312.2s     success   
+
+deep       RELU       No    No    34.75%       35.32%       234.6s     success   
+deep       RELU       Yes   No    39.58%       38.41%       241.8s     success   
+deep       SWIGLU     No    No    N/A          N/A          0.0s       exploded  
+deep       SWIGLU     Yes   No    N/A          N/A          0.0s       exploded  
+deep       HRELU      No    No    50.35%       47.77%       239.0s     success   
+deep       HRELU      Yes   No    24.24%       23.92%       164.2s     success   
+deep       HRELU      No    Yes   34.22%       33.89%       166.9s     success   
+deep       HRELU      Yes   Yes   39.32%       35.69%       166.3s     success   
+
+========================================================================================================================
+KEY FINDINGS
+========================================================================================================================
+
+MNIST Best: HRELU + BN [HReLU-Opt] → 99.32%
+CIFAR10 Best: HRELU + BN [HReLU-Opt] → 86.08%
+DEEP Best: HRELU → 50.35%
+
+H-ReLU Optimizer Impact:
+  Average speedup: 6.1% faster

@@ -15,6 +15,15 @@ import numpy as np
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from prelu_activation import HReLU, SwiGLU
 
+# Try to import H-ReLU optimizer (optional)
+try:
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from hrelu_optimizer import create_hrelu_optimizer
+    HRELU_OPT_AVAILABLE = True
+except ImportError:
+    HRELU_OPT_AVAILABLE = False
+    print("⚠️  hrelu_optimizer.py not found - using standard Adam optimizer")
+
 # =============================================================================
 # MODELS
 # =============================================================================
@@ -179,9 +188,13 @@ def get_activation_stats(model, loader, device):
 # MAIN RUNNER
 # =============================================================================
 
-def run_single(dataset, activation, batchnorm, epochs, layers, lr, device):
+def run_single(dataset, activation, batchnorm, epochs, layers, lr, device, 
+               use_hrelu_opt=False, k_mult=1.0, o_mult=2.0, n_mult=0.5):
     """Run a single benchmark configuration"""
     config_name = f"{activation.upper()}" + (" + BN" if batchnorm else " (No BN)")
+    if use_hrelu_opt and activation == 'hrelu':
+        config_name += " [HReLU-Opt]"
+    
     print(f"\n{'='*60}")
     print(f"🚀 {dataset.upper()} | {config_name}")
     print(f"{'='*60}")
@@ -206,11 +219,18 @@ def run_single(dataset, activation, batchnorm, epochs, layers, lr, device):
     else: model = DeepNet(num_layers=layers, activation_type=activation)
     model.to(device)
 
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+    # Optimizer Selection
+    if use_hrelu_opt and activation == 'hrelu' and HRELU_OPT_AVAILABLE:
+        print(f"  Using H-ReLU Aware Optimizer: k={k_mult}x, o={o_mult}x, n={n_mult}x")
+        optimizer = create_hrelu_optimizer(model, lr=lr, k_mult=k_mult, o_mult=o_mult, n_mult=n_mult)
+    else:
+        optimizer = optim.Adam(model.parameters(), lr=lr)
+    
     criterion = nn.CrossEntropyLoss()
     
     history = {'config': config_name, 'dataset': dataset, 'activation': activation, 'batchnorm': batchnorm,
-               'train_acc': [], 'test_acc': [], 'train_loss': [], 'test_loss': [], 'status': 'success'}
+               'train_acc': [], 'test_acc': [], 'train_loss': [], 'test_loss': [], 'status': 'success',
+               'hrelu_opt': use_hrelu_opt if activation == 'hrelu' else False}
     start_time = time.time()
 
     for epoch in range(epochs):
@@ -240,9 +260,17 @@ def run():
     parser.add_argument('--batchnorm', action='store_true', help='Use BatchNorm')
     parser.add_argument('--epochs', type=int, default=10, help='Number of epochs')
     parser.add_argument('--layers', type=int, default=20, help='Layers (for deep task)')
+    parser.add_argument('--deep-layers', type=int, default=None, help='Override layers for deep test (e.g., 40 for extreme depth)')
     parser.add_argument('--lr', type=float, default=0.001, help='Learning rate')
     parser.add_argument('--out', type=str, default='results/benchmark_results.json', help='Output JSON path')
     parser.add_argument('--all', action='store_true', help='Run all combinations (3 activations × 2 BN settings × 3 datasets)')
+    
+    # H-ReLU Optimizer Options
+    parser.add_argument('--hrelu-opt', action='store_true', help='Use H-ReLU aware optimizer (only for hrelu activation)')
+    parser.add_argument('--k-mult', type=float, default=1.0, help='Learning rate multiplier for k (positive slope)')
+    parser.add_argument('--o-mult', type=float, default=2.0, help='Learning rate multiplier for o (negative slope)')
+    parser.add_argument('--n-mult', type=float, default=0.5, help='Learning rate multiplier for n (threshold)')
+    
     args = parser.parse_args()
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -252,27 +280,59 @@ def run():
         print("🚀 RUNNING COMPREHENSIVE BENCHMARK SUITE")
         print(f"{'='*60}")
         print(f"Device: {device}")
-        print("Configurations: 3 activations × 2 BN settings × 3 datasets = 18 total runs")
+        print("Configuration:")
+        print("  - ReLU + SwiGLU: 2 activations × 2 BN × 3 datasets = 12 runs")
+        print("  - H-ReLU (no opt): 1 activation × 2 BN × 3 datasets = 6 runs")
+        print("  - H-ReLU (with opt): 1 activation × 2 BN × 3 datasets = 6 runs")
+        print("  TOTAL: 24 runs")
+        if args.deep_layers:
+            print(f"  Deep network layers: {args.deep_layers}")
+        print(f"  H-ReLU Optimizer: k={args.k_mult}x, o={args.o_mult}x, n={args.n_mult}x")
         print(f"{'='*60}\n")
         
         all_results = []
-        activations = ['hrelu', 'relu', 'swiglu']
         bn_settings = [False, True]
         datasets = ['mnist', 'cifar10', 'deep']
         
-        total_runs = len(activations) * len(bn_settings) * len(datasets)
+        # Total: 12 (ReLU+SwiGLU) + 6 (H-ReLU no opt) + 6 (H-ReLU with opt) = 24
+        total_runs = 24
         current_run = 0
         
         for dataset in datasets:
             dataset_results = []
-            for activation in activations:
+            # Use deep-layers override for deep dataset
+            layers_to_use = args.deep_layers if (dataset == 'deep' and args.deep_layers) else args.layers
+            
+            # Run ReLU and SwiGLU (standard, no optimizer)
+            for activation in ['relu', 'swiglu']:
                 for use_bn in bn_settings:
                     current_run += 1
                     print(f"\n[{current_run}/{total_runs}]", end=" ")
                     
-                    result = run_single(dataset, activation, use_bn, args.epochs, args.layers, args.lr, device)
+                    result = run_single(dataset, activation, use_bn, args.epochs, layers_to_use, args.lr, device,
+                                       False, args.k_mult, args.o_mult, args.n_mult)  # No optimizer
                     dataset_results.append(result)
                     all_results.append(result)
+            
+            # Run H-ReLU WITHOUT optimizer
+            for use_bn in bn_settings:
+                current_run += 1
+                print(f"\n[{current_run}/{total_runs}]", end=" ")
+                
+                result = run_single(dataset, 'hrelu', use_bn, args.epochs, layers_to_use, args.lr, device,
+                                   False, args.k_mult, args.o_mult, args.n_mult)  # No optimizer
+                dataset_results.append(result)
+                all_results.append(result)
+            
+            # Run H-ReLU WITH optimizer
+            for use_bn in bn_settings:
+                current_run += 1
+                print(f"\n[{current_run}/{total_runs}]", end=" ")
+                
+                result = run_single(dataset, 'hrelu', use_bn, args.epochs, layers_to_use, args.lr, device,
+                                   True, args.k_mult, args.o_mult, args.n_mult)  # WITH optimizer
+                dataset_results.append(result)
+                all_results.append(result)
             
             # Save per-dataset results
             output_path = Path(f'results/{dataset}_results.json')
@@ -303,7 +363,11 @@ def run():
     else:
         # Single run mode
         print(f"🚀 Running {args.dataset.upper()} | Act: {args.activation.upper()} | BN: {args.batchnorm} | Device: {device}")
-        result = run_single(args.dataset, args.activation, args.batchnorm, args.epochs, args.layers, args.lr, device)
+        if args.hrelu_opt and args.activation == 'hrelu':
+            print(f"  H-ReLU Optimizer: k={args.k_mult}x, o={args.o_mult}x, n={args.n_mult}x")
+        
+        result = run_single(args.dataset, args.activation, args.batchnorm, args.epochs, args.layers, args.lr, device,
+                           args.hrelu_opt, args.k_mult, args.o_mult, args.n_mult)
         
         # Save results
         Path(args.out).parent.mkdir(exist_ok=True)
